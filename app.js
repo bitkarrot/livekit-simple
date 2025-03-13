@@ -224,19 +224,32 @@ function setupEventListeners() {
       } else {
         // Start screen sharing
         try {
-          screenShareTrack = await LivekitClient.LocalVideoTrack.createScreenShareTrack({
+          // Use the correct method for screen sharing in the current LiveKit client library
+          const screenShareOptions = {
             resolution: { width: 1920, height: 1080 },
-            // Add audio capture if needed
-            audio: true,
-            // Handle screen share ending
-            onStopped: () => {
-              if (screenShareTrack) {
-                room.localParticipant.unpublishTrack(screenShareTrack);
-                screenShareTrack = null;
-                screenBtn.classList.remove('bg-blue-600');
-                screenBtn.classList.add('bg-gray-700');
-                showToast('Screen sharing stopped');
-              }
+            audio: true
+          };
+          
+          // Create screen share tracks using the correct method
+          const tracks = await LivekitClient.createLocalTracks({
+            video: { ...screenShareOptions, source: 'screen' }
+          });
+          
+          // Get the screen share video track
+          screenShareTrack = tracks.find(track => track.kind === 'video');
+          
+          if (!screenShareTrack) {
+            throw new Error('Failed to create screen share track');
+          }
+          
+          // Handle screen share ending
+          screenShareTrack.on('ended', () => {
+            if (screenShareTrack) {
+              room.localParticipant.unpublishTrack(screenShareTrack);
+              screenShareTrack = null;
+              screenBtn.classList.remove('bg-blue-600');
+              screenBtn.classList.add('bg-gray-700');
+              showToast('Screen sharing stopped');
             }
           });
           
@@ -250,12 +263,14 @@ function setupEventListeners() {
             console.log('User cancelled screen sharing');
             return;
           }
-          throw screenError;
+          
+          console.error('[ERROR] Error toggling screen share:', screenError);
+          showToast('Failed to share screen: ' + (screenError.message || 'Unknown error'));
         }
       }
     } catch (error) {
       console.error('[ERROR] Error toggling screen share:', error);
-      showToast('Failed to toggle screen share: ' + (error.message || 'Unknown error'));
+      showToast('An unexpected error occurred while sharing screen');
     }
   });
   
