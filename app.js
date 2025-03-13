@@ -224,39 +224,62 @@ function setupEventListeners() {
       } else {
         // Start screen sharing
         try {
-          // Use the correct method for screen sharing in the current LiveKit client library
-          const screenShareOptions = {
-            resolution: { width: 1920, height: 1080 },
-            audio: true
+          // Use a simpler approach with getDisplayMedia
+          const constraints = {
+            audio: true,
+            video: true
           };
           
-          // Create screen share tracks using the correct method
-          const tracks = await LivekitClient.createLocalTracks({
-            video: { ...screenShareOptions, source: 'screen' }
-          });
+          console.log('Getting display media with constraints:', constraints);
           
-          // Get the screen share video track
-          screenShareTrack = tracks.find(track => track.kind === 'video');
+          // Create screen capture stream
+          const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
           
-          if (!screenShareTrack) {
-            throw new Error('Failed to create screen share track');
+          // Get video track
+          const videoTrack = screenStream.getVideoTracks()[0];
+          if (!videoTrack) {
+            throw new Error('No video track found in screen share stream');
           }
           
+          console.log('Created screen share video track:', videoTrack.id, videoTrack.label);
+          
+          // Create a LiveKit track from the media track
+          // Use the simpler constructor to avoid issues with source identification
+          screenShareTrack = new LivekitClient.LocalVideoTrack(videoTrack);
+          
+          console.log('Created LiveKit screen share track:', screenShareTrack);
+          
           // Handle screen share ending
-          screenShareTrack.on('ended', () => {
+          videoTrack.addEventListener('ended', () => {
+            console.log('Screen share track ended event fired');
             if (screenShareTrack) {
               room.localParticipant.unpublishTrack(screenShareTrack);
               screenShareTrack = null;
               screenBtn.classList.remove('bg-blue-600');
               screenBtn.classList.add('bg-gray-700');
               showToast('Screen sharing stopped');
+              // Force update the participant grid
+              updateParticipantGrid();
             }
           });
           
-          await room.localParticipant.publishTrack(screenShareTrack);
+          // Publish the track with metadata to ensure it's recognized as screen share
+          const publishOptions = {
+            name: 'screen',
+            source: 'screenshare'
+          };
+          
+          await room.localParticipant.publishTrack(screenShareTrack, publishOptions);
+          console.log('Published screen share track:', screenShareTrack.sid);
+          
           screenBtn.classList.remove('bg-gray-700');
           screenBtn.classList.add('bg-blue-600');
           showToast('Screen sharing started');
+          
+          // Wait a short time for the track publication to be registered
+          setTimeout(() => {
+            updateParticipantGrid();
+          }, 1000);
         } catch (screenError) {
           // Handle user cancellation (not a real error)
           if (screenError.name === 'NotAllowedError' || screenError.message.includes('Permission denied')) {
@@ -336,15 +359,16 @@ function setupEventListeners() {
 
 // Setup room events
 function setupRoomEvents() {
-  if (!room) return;
+  if (roomEventsBound) {
+    return;
+  }
   
-  // Remove any existing event listeners to prevent duplicates
-  room.removeAllListeners();
   roomEventsBound = true;
   
-  // Connection state changes
+  // Connection state
   room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
     console.log('Connection state changed:', state);
+    
     switch (state) {
       case LivekitClient.ConnectionState.Connecting:
         updateConnectionStatus('Connecting...');
@@ -366,6 +390,19 @@ function setupRoomEvents() {
         break;
       default:
         break;
+    }
+  });
+  
+  // Local track published event - important for screen sharing
+  room.on(LivekitClient.RoomEvent.LocalTrackPublished, (track, publication, participant) => {
+    console.log('Local track published:', track.kind, track.source, 'publication:', publication.trackSid);
+    
+    // If this is a screen share track, update the UI
+    if (track.source === LivekitClient.Track.Source.ScreenShare) {
+      console.log('Screen share track published, updating UI');
+      setTimeout(() => {
+        updateParticipantGrid();
+      }, 500);
     }
   });
   
@@ -667,17 +704,20 @@ function updateConnectionStatus(status) {
 // Update participant grid
 function updateParticipantGrid() {
   try {
+    console.log('Updating participant grid');
     // Clear the container
     participantsContainer.innerHTML = '';
     
     // Add local participant
     if (room && room.localParticipant) {
+      console.log('Adding local participant to grid:', room.localParticipant.identity);
       createParticipantTile(room.localParticipant, true);
     }
     
     // Add remote participants
     if (room && room.participants) {
       room.participants.forEach(participant => {
+        console.log('Adding remote participant to grid:', participant.identity);
         createParticipantTile(participant, false);
       });
     }
@@ -745,8 +785,29 @@ function createParticipantTile(participant, isLocal) {
   }
   
   // Check if screen share is active
-  const screenPublication = participant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);
+  let screenPublication = participant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);
+  
+  // If we're the local participant and have an active screen share track but no publication found yet
+  if (isLocal && screenShareTrack && !screenPublication) {
+    console.log('Local participant has active screen share track but no publication found via getTrackPublication');
+    
+    // Try to find the screen share publication by iterating through all track publications
+    const publications = participant.trackPublications;
+    console.log('All local participant publications:', Array.from(publications.values()).map(p => ({ sid: p.trackSid, source: p.source, kind: p.kind })));
+    
+    // Find the screen share publication manually
+    for (const pub of publications.values()) {
+      if (pub.track && pub.track === screenShareTrack) {
+        console.log('Found screen share publication by direct track comparison:', pub.trackSid);
+        screenPublication = pub;
+        break;
+      }
+    }
+  }
+  
   if (screenPublication && screenPublication.track && !screenPublication.isMuted) {
+    console.log('Found screen share publication for participant:', participant.identity, 'trackSid:', screenPublication.trackSid);
+    
     // Create a screen share indicator
     const screenShareIndicator = document.createElement('div');
     screenShareIndicator.className = 'absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded';
@@ -755,6 +816,11 @@ function createParticipantTile(participant, isLocal) {
     
     // Create a separate tile for the screen share
     createScreenShareTile(participant, screenPublication);
+  } else if (isLocal && screenShareTrack) {
+    console.log('Local participant has active screen share track but no publication found');
+    
+    // Create a direct screen share tile using the local track
+    createDirectScreenShareTile(participant, screenShareTrack);
   }
   
   // Update audio indicator based on track state
@@ -767,6 +833,8 @@ function createParticipantTile(participant, isLocal) {
 
 // Create a screen share tile
 function createScreenShareTile(participant, screenPublication) {
+  console.log('Creating screen share tile for participant:', participant.identity);
+  
   const tile = document.createElement('div');
   tile.id = `screen-${participant.identity}`;
   tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video';
@@ -776,7 +844,9 @@ function createScreenShareTile(participant, screenPublication) {
   screenContainer.className = 'absolute inset-0';
   
   // Attach screen share
+  console.log('Attaching screen share track:', screenPublication.trackSid);
   const screenElement = screenPublication.track.attach();
+  screenElement.autoplay = true;
   screenElement.className = 'w-full h-full object-contain';
   screenContainer.appendChild(screenElement);
   
@@ -793,6 +863,44 @@ function createScreenShareTile(participant, screenPublication) {
   tile.appendChild(screenContainer);
   tile.appendChild(infoBar);
   participantsContainer.appendChild(tile);
+  
+  console.log('Screen share tile created and added to grid');
+}
+
+// Create a direct screen share tile using the local track (fallback method)
+function createDirectScreenShareTile(participant, track) {
+  console.log('Creating direct screen share tile for participant:', participant.identity);
+  
+  const tile = document.createElement('div');
+  tile.id = `screen-direct-${participant.identity}`;
+  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video';
+  
+  // Create screen container
+  const screenContainer = document.createElement('div');
+  screenContainer.className = 'absolute inset-0';
+  
+  // Attach screen share directly
+  console.log('Attaching screen share track directly');
+  const screenElement = track.mediaStreamTrack ? new MediaStream([track.mediaStreamTrack]).getTracks()[0].attach() : track.attach();
+  screenElement.autoplay = true;
+  screenElement.className = 'w-full h-full object-contain';
+  screenContainer.appendChild(screenElement);
+  
+  // Create info bar
+  const infoBar = document.createElement('div');
+  infoBar.className = 'absolute bottom-0 left-0 right-0 bg-gray-900 bg-opacity-70 p-2';
+  
+  // Screen share label
+  const label = document.createElement('div');
+  label.className = 'text-white text-sm';
+  label.textContent = `${participant.identity}'s Screen (Direct)`;
+  infoBar.appendChild(label);
+  
+  tile.appendChild(screenContainer);
+  tile.appendChild(infoBar);
+  participantsContainer.appendChild(tile);
+  
+  console.log('Direct screen share tile created and added to grid');
 }
 
 // Setup audio visualization
