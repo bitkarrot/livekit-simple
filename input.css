@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for LiveKit Video Conference */
+
+/* Fade animations for status banner */
+#status-banner {
+  transition: opacity 0.3s ease-in-out;
+}
+
+#status-banner.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Participant tile hover effects */
+[id^="participant-"] {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+[id^="participant-"]:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+/* Audio level visualization animation */
+[id^="audio-indicator-"] {
+  transition: background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+
+/* Active speaker highlight */
+.ring-2.ring-blue-500 {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+/* Toast notification animations */
+#toast {
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#toast.hidden {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+}
+
+/* Connect modal animations */
+#connect-modal {
+  transition: opacity 0.3s ease-in-out;
+}
+
+#connect-modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .control-bar {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  #participants-container {
+    padding: 8px;
+    gap: 8px;
+  }
+}
+
+/* Accessibility improvements */
+button:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+input:focus {
+  outline: 2px solid #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* Screen share tile styling */
+[id^="screen-"] {
+  border: 2px solid #3b82f6;
+}
+
+/* Connection quality indicators */
+.text-green-500, .text-green-400 {
+  font-weight: bold;
+}
+
+.text-yellow-500, .text-red-500 {
+  font-weight: bold;
+}
