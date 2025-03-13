@@ -469,6 +469,8 @@ async function joinRoom(username, roomName) {
       throw new Error('Invalid token response from server');
     }
     
+    console.log('Received token and URL from server:', { url });
+    
     // If we already have a room, disconnect from it first
     if (room && room.state !== LivekitClient.ConnectionState.Disconnected) {
       try {
@@ -495,9 +497,21 @@ async function joinRoom(username, roomName) {
     
     // Connect to room with proper error handling
     try {
-      // Use the URL from the server response if available, otherwise fallback to localhost
-      const wsUrl = url || 'ws://localhost:7880';
-      await room.connect(wsUrl, token);
+      // Try different URL formats if needed
+      // For local development, ws:// usually works better than wss://
+      let wsUrl = url || 'ws://localhost:7880';
+      
+      // If URL starts with wss:// but we're on localhost, try ws:// instead
+      if (wsUrl.startsWith('wss://localhost')) {
+        wsUrl = wsUrl.replace('wss://', 'ws://');
+      }
+      
+      console.log('Connecting to LiveKit server at:', wsUrl);
+      
+      await room.connect(wsUrl, token, {
+        autoSubscribe: true
+      });
+      
       console.log('Connected to room:', room.name);
       
       // Save current room name
