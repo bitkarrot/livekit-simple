@@ -22,13 +22,7 @@ Before running this application, you need to have the following installed:
 
 If you haven't installed the LiveKit CLI yet, you can do so with:
 
-```bash
-# Using pnpm
-pnpm add -g livekit-cli
-
-# Using yarn
-yarn global add livekit-cli
-```
+https://docs.livekit.io/home/cli/cli-setup/
 
 ### 2. Install Dependencies
 
