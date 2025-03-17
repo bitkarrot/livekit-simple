@@ -73,6 +73,16 @@ async function init() {
     const roomParam = urlParams.get('room');
     if (roomParam) {
       roomInput.value = roomParam;
+      
+      // Auto-connect if room is specified in URL
+      const username = localStorage.getItem('livekit-username') || '';
+      if (username) {
+        usernameInput.value = username;
+        // Auto-join after a short delay to allow UI to initialize
+        setTimeout(() => {
+          joinBtn.click();
+        }, 500);
+      }
     }
     
     console.log('LiveKit app initialized successfully');
@@ -107,8 +117,16 @@ function setupEventListeners() {
       return;
     }
     
+    // Save username for future use
+    localStorage.setItem('livekit-username', username);
+    
     try {
       await joinRoom(username, roomName);
+      
+      // Update URL with room parameter without reloading the page
+      const url = new URL(window.location);
+      url.searchParams.set('room', roomName);
+      window.history.pushState({}, '', url);
     } catch (error) {
       console.error('[ERROR] Error connecting to room:', error);
       showToast('Failed to connect: ' + (error.message || 'Unknown error'));
@@ -359,16 +377,15 @@ function setupEventListeners() {
 
 // Setup room events
 function setupRoomEvents() {
-  if (roomEventsBound) {
-    return;
-  }
+  if (!room) return;
   
+  // Remove any existing event listeners to prevent duplicates
+  room.removeAllListeners();
   roomEventsBound = true;
   
-  // Connection state
+  // Connection state changes
   room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
     console.log('Connection state changed:', state);
-    
     switch (state) {
       case LivekitClient.ConnectionState.Connecting:
         updateConnectionStatus('Connecting...');
@@ -390,19 +407,6 @@ function setupRoomEvents() {
         break;
       default:
         break;
-    }
-  });
-  
-  // Local track published event - important for screen sharing
-  room.on(LivekitClient.RoomEvent.LocalTrackPublished, (track, publication, participant) => {
-    console.log('Local track published:', track.kind, track.source, 'publication:', publication.trackSid);
-    
-    // If this is a screen share track, update the UI
-    if (track.source === LivekitClient.Track.Source.ScreenShare) {
-      console.log('Screen share track published, updating UI');
-      setTimeout(() => {
-        updateParticipantGrid();
-      }, 500);
     }
   });
   
