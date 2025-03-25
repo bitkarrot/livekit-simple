@@ -9,8 +9,8 @@ let micIcon, micOffIcon, cameraIcon, cameraOffIcon, statusBanner, statusText;
 let audioInputSelect, videoInputSelect, toast, toastMessage;
 
 // State
-let micEnabled = true;
-let cameraEnabled = true;
+let micEnabled = false;
+let cameraEnabled = false;
 let screenShareTrack = null;
 let currentRoom = '';
 let audioAnalysers = new Map();
@@ -497,8 +497,8 @@ function cleanupRoom() {
   audioAnalysers.clear();
   
   // Reset state
-  micEnabled = true;
-  cameraEnabled = true;
+  micEnabled = false;
+  cameraEnabled = false;
   screenShareTrack = null;
   roomEventsBound = false;
   
@@ -576,11 +576,19 @@ async function joinRoom(username, roomName) {
       // Hide connect modal
       connectModal.classList.add('hidden');
       
-      // Enable local tracks with proper error handling
+      // Initialize tracks but keep them disabled
       try {
-        await room.localParticipant.enableCameraAndMicrophone();
-        micEnabled = true;
-        cameraEnabled = true;
+        // Pre-initialize camera and microphone but keep them disabled
+        // This makes toggling faster later
+        await room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
+        
+        // Immediately disable them to match our default state
+        await room.localParticipant.setCameraEnabled(false);
+        await room.localParticipant.setMicrophoneEnabled(false);
+        
+        micEnabled = false;
+        cameraEnabled = false;
         updateMicButton();
         updateCameraButton();
       } catch (mediaError) {
