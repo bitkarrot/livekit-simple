@@ -59,7 +59,8 @@ async function init() {
       dynacast: true,
       videoCaptureDefaults: {
         resolution: { width: 640, height: 480 }
-      }
+      },
+      autoSubscribe: true
     });
     
     // Populate device selection dropdowns
@@ -828,19 +829,26 @@ function createParticipantTile(participant, isLocal) {
   infoBar.appendChild(indicators);
   tile.appendChild(infoBar);
   
-  // Add placeholder avatar if no video track is available
-  const videoPublication = participant.getTrackPublication(LivekitClient.Track.Source.Camera);
-  if (videoPublication && videoPublication.track && !videoPublication.isMuted) {
-    // Attach video track if available
-    const videoElement = videoPublication.track.attach();
+  // Function to handle video track attachment
+  const attachVideoTrack = (track) => {
+    // Clear the container first
+    videoContainer.innerHTML = '';
+    // Attach the video
+    const videoElement = track.attach();
     videoElement.autoplay = true;
     videoElement.className = 'w-full h-full object-cover';
-    videoContainer.appendChild(videoElement);
-    
     // If this is the local participant, mirror the video
     if (isLocal) {
       videoElement.style.transform = 'scaleX(-1)';
     }
+    videoContainer.appendChild(videoElement);
+  };
+  
+  // Check for existing video track
+  const videoPublication = participant.getTrackPublication(LivekitClient.Track.Source.Camera);
+  if (videoPublication && videoPublication.track && !videoPublication.isMuted) {
+    // Attach video track if available
+    attachVideoTrack(videoPublication.track);
   } else {
     // Add placeholder avatar when no video is available
     const avatarPlaceholder = document.createElement('div');
@@ -850,18 +858,26 @@ function createParticipantTile(participant, isLocal) {
     avatarCircle.textContent = participant.identity.charAt(0).toUpperCase();
     avatarPlaceholder.appendChild(avatarCircle);
     videoContainer.appendChild(avatarPlaceholder);
-    
-    // Listen for when the video track gets added
-    participant.on(LivekitClient.ParticipantEvent.TrackSubscribed, (track) => {
+  }
+  
+  // Listen for when the video track gets subscribed
+  if (!isLocal) {
+    // For remote participants, we need to listen for track subscription events
+    participant.on(LivekitClient.ParticipantEvent.TrackSubscribed, (track, publication) => {
+      console.log('Track subscribed for participant:', participant.identity, 'track kind:', track.kind, 'track source:', track.source);
       if (track.kind === LivekitClient.Track.Kind.Video && track.source === LivekitClient.Track.Source.Camera) {
-        console.log('Video track subscribed for participant:', participant.identity);
-        // Remove the placeholder
-        videoContainer.innerHTML = '';
-        // Add the video
-        const videoElement = track.attach();
-        videoElement.autoplay = true;
-        videoElement.className = 'w-full h-full object-cover';
-        videoContainer.appendChild(videoElement);
+        attachVideoTrack(track);
+      }
+    });
+    
+    // Also check for already subscribed tracks that might have been missed
+    participant.trackPublications.forEach(publication => {
+      if (publication.track && 
+          publication.kind === LivekitClient.Track.Kind.Video && 
+          publication.source === LivekitClient.Track.Source.Camera &&
+          !publication.isMuted) {
+        console.log('Found already subscribed video track for participant:', participant.identity);
+        attachVideoTrack(publication.track);
       }
     });
   }
@@ -914,6 +930,27 @@ function createParticipantTile(participant, isLocal) {
     audioIndicator.classList.add('bg-green-500');
     audioIndicator.classList.remove('bg-red-500');
   }
+  
+  // Listen for audio mute/unmute events
+  participant.on(LivekitClient.ParticipantEvent.TrackMuted, (publication) => {
+    if (publication.kind === LivekitClient.Track.Kind.Audio) {
+      const indicator = document.getElementById(`audio-indicator-${participant.identity}`);
+      if (indicator) {
+        indicator.classList.remove('bg-green-500');
+        indicator.classList.add('bg-red-500');
+      }
+    }
+  });
+  
+  participant.on(LivekitClient.ParticipantEvent.TrackUnmuted, (publication) => {
+    if (publication.kind === LivekitClient.Track.Kind.Audio) {
+      const indicator = document.getElementById(`audio-indicator-${participant.identity}`);
+      if (indicator) {
+        indicator.classList.add('bg-green-500');
+        indicator.classList.remove('bg-red-500');
+      }
+    }
+  });
 }
 
 // Create a screen share tile
