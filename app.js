@@ -633,69 +633,114 @@ async function populateDeviceOptions() {
     // Get available devices
     const devices = await navigator.mediaDevices.enumerateDevices();
     
+    // Get references to popup elements
+    const audioInputPopup = document.getElementById('audio-input-popup');
+    const videoInputPopup = document.getElementById('video-input-popup');
+    
     // Filter audio input devices
     const audioInputs = devices.filter(device => device.kind === 'audioinput');
+    
+    // Clear existing options
     audioInputSelect.innerHTML = '';
+    audioInputPopup.innerHTML = '';
+    
+    // Add audio input options to both dropdown and popup
     audioInputs.forEach(device => {
+      // Add to dropdown select
       const option = document.createElement('option');
       option.value = device.deviceId;
       option.text = device.label || `Microphone ${audioInputSelect.length + 1}`;
       audioInputSelect.appendChild(option);
+      
+      // Add to popup menu
+      const popupOption = document.createElement('button');
+      popupOption.className = 'w-full text-left text-white hover:bg-gray-700 px-2 py-1 rounded text-sm';
+      popupOption.textContent = device.label || `Microphone ${audioInputPopup.children.length + 1}`;
+      popupOption.dataset.deviceId = device.deviceId;
+      popupOption.addEventListener('click', () => {
+        audioInputSelect.value = device.deviceId;
+        audioInputPopup.classList.add('hidden');
+        
+        // If in a room, change the audio device
+        if (room && room.localParticipant) {
+          room.localParticipant.setMicrophoneEnabled(true, { deviceId: device.deviceId });
+        }
+      });
+      audioInputPopup.appendChild(popupOption);
     });
     
     // Filter video input devices
     const videoInputs = devices.filter(device => device.kind === 'videoinput');
+    
+    // Clear existing options
     videoInputSelect.innerHTML = '';
+    videoInputPopup.innerHTML = '';
+    
+    // Add video input options to both dropdown and popup
     videoInputs.forEach(device => {
+      // Add to dropdown select
       const option = document.createElement('option');
       option.value = device.deviceId;
       option.text = device.label || `Camera ${videoInputSelect.length + 1}`;
       videoInputSelect.appendChild(option);
-    });
-
-    // Add device selection change event listeners
-    audioInputSelect.addEventListener('change', async () => {
-      try {
-        if (!room || !room.localParticipant) {
-          console.log('Cannot change audio device: Not connected to a room');
-          return;
+      
+      // Add to popup menu
+      const popupOption = document.createElement('button');
+      popupOption.className = 'w-full text-left text-white hover:bg-gray-700 px-2 py-1 rounded text-sm';
+      popupOption.textContent = device.label || `Camera ${videoInputPopup.children.length + 1}`;
+      popupOption.dataset.deviceId = device.deviceId;
+      popupOption.addEventListener('click', () => {
+        videoInputSelect.value = device.deviceId;
+        videoInputPopup.classList.add('hidden');
+        
+        // If in a room, change the video device
+        if (room && room.localParticipant) {
+          room.localParticipant.setCameraEnabled(true, { deviceId: device.deviceId });
         }
-        
-        const deviceId = audioInputSelect.value;
-        if (!deviceId) return;
-        
-        await room.switchActiveDevice(LivekitClient.Track.Kind.Audio, deviceId);
-        showToast('Microphone changed');
-      } catch (error) {
-        console.error('[ERROR] Failed to switch audio device:', error);
-        showToast('Failed to change microphone: ' + (error.message || 'Unknown error'));
+      });
+      videoInputPopup.appendChild(popupOption);
+    });
+    
+    // Add event listeners for device dropdowns
+    audioInputSelect.addEventListener('change', () => {
+      const deviceId = audioInputSelect.value;
+      if (room && room.localParticipant) {
+        room.localParticipant.setMicrophoneEnabled(true, { deviceId });
       }
     });
     
-    videoInputSelect.addEventListener('change', async () => {
-      try {
-        if (!room || !room.localParticipant) {
-          console.log('Cannot change video device: Not connected to a room');
-          return;
-        }
-        
-        const deviceId = videoInputSelect.value;
-        if (!deviceId) return;
-        
-        await room.switchActiveDevice(LivekitClient.Track.Kind.Video, deviceId);
-        showToast('Camera changed');
-      } catch (error) {
-        console.error('[ERROR] Failed to switch video device:', error);
-        showToast('Failed to change camera: ' + (error.message || 'Unknown error'));
+    videoInputSelect.addEventListener('change', () => {
+      const deviceId = videoInputSelect.value;
+      if (room && room.localParticipant) {
+        room.localParticipant.setCameraEnabled(true, { deviceId });
       }
     });
+    
+    // Add event listeners for device icons
+    const audioInputIcon = document.getElementById('audio-input-icon');
+    const videoInputIcon = document.getElementById('video-input-icon');
+    
+    audioInputIcon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      audioInputPopup.classList.toggle('hidden');
+      videoInputPopup.classList.add('hidden'); // Hide the other popup
+    });
+    
+    videoInputIcon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      videoInputPopup.classList.toggle('hidden');
+      audioInputPopup.classList.add('hidden'); // Hide the other popup
+    });
+    
+    // Close popups when clicking outside
+    document.addEventListener('click', () => {
+      audioInputPopup.classList.add('hidden');
+      videoInputPopup.classList.add('hidden');
+    });
+    
   } catch (error) {
-    console.error('Failed to enumerate devices:', error);
-    
-    // Check for permission errors
-    if (error.name === 'NotAllowedError' || error.message.includes('Permission denied')) {
-      permissionsWarning.classList.remove('hidden');
-    }
+    console.error('[ERROR] Error enumerating devices:', error);
+    permissionsWarning.classList.remove('hidden');
   }
 }
 
@@ -720,8 +765,10 @@ function updateParticipantGrid() {
     
     // Add remote participants
     if (room && room.participants) {
+      console.log(`Adding ${room.participants.size} remote participants to grid`);
       room.participants.forEach(participant => {
-        console.log('Adding remote participant to grid:', participant.identity);
+        console.log('Adding remote participant to grid:', participant.identity, 
+                    'with tracks:', Array.from(participant.trackPublications.values()).map(pub => pub.trackName || pub.trackSid));
         createParticipantTile(participant, false);
       });
     }
@@ -772,11 +819,11 @@ function createParticipantTile(participant, isLocal) {
   
   infoBar.appendChild(indicators);
   tile.appendChild(infoBar);
-  participantsContainer.appendChild(tile);
   
-  // Attach video track if available
+  // Add placeholder avatar if no video track is available
   const videoPublication = participant.getTrackPublication(LivekitClient.Track.Source.Camera);
   if (videoPublication && videoPublication.track && !videoPublication.isMuted) {
+    // Attach video track if available
     const videoElement = videoPublication.track.attach();
     videoElement.autoplay = true;
     videoElement.className = 'w-full h-full object-cover';
@@ -786,7 +833,33 @@ function createParticipantTile(participant, isLocal) {
     if (isLocal) {
       videoElement.style.transform = 'scaleX(-1)';
     }
+  } else {
+    // Add placeholder avatar when no video is available
+    const avatarPlaceholder = document.createElement('div');
+    avatarPlaceholder.className = 'w-full h-full flex items-center justify-center';
+    const avatarCircle = document.createElement('div');
+    avatarCircle.className = 'w-100 h-100 rounded-full bg-blue-600 flex items-center justify-center text-white text-4xl font-bold';
+    avatarCircle.textContent = participant.identity.charAt(0).toUpperCase();
+    avatarPlaceholder.appendChild(avatarCircle);
+    videoContainer.appendChild(avatarPlaceholder);
+    
+    // Listen for when the video track gets added
+    participant.on(LivekitClient.ParticipantEvent.TrackSubscribed, (track) => {
+      if (track.kind === LivekitClient.Track.Kind.Video && track.source === LivekitClient.Track.Source.Camera) {
+        console.log('Video track subscribed for participant:', participant.identity);
+        // Remove the placeholder
+        videoContainer.innerHTML = '';
+        // Add the video
+        const videoElement = track.attach();
+        videoElement.autoplay = true;
+        videoElement.className = 'w-full h-full object-cover';
+        videoContainer.appendChild(videoElement);
+      }
+    });
   }
+  
+  // Add tile to participants container
+  participantsContainer.appendChild(tile);
   
   // Check if screen share is active
   let screenPublication = participant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);

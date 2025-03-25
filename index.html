@@ -28,12 +28,35 @@
   <div class="bg-gray-800 p-3 flex justify-center items-center gap-4">
     <!-- Device selection dropdowns -->
     <div class="flex gap-2 mr-4">
-      <select id="audio-input" class="bg-gray-700 text-white rounded px-2 py-1 text-sm" aria-label="Select microphone">
-        <option value="">Loading...</option>
-      </select>
-      <select id="video-input" class="bg-gray-700 text-white rounded px-2 py-1 text-sm" aria-label="Select camera">
-        <option value="">Loading...</option>
-      </select>
+      <!-- Audio input selection -->
+      <div class="device-select-container relative">
+        <select id="audio-input" class="device-select bg-gray-700 text-white rounded-full px-3 py-2 text-sm pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 hidden md:block" aria-label="Select microphone">
+          <option value="">Loading...</option>
+        </select>
+        <button id="audio-input-icon" class="device-icon w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 md:hidden" aria-label="Microphone options">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+          </svg>
+        </button>
+        <div id="audio-input-popup" class="device-popup absolute bottom-full left-0 mb-2 bg-gray-800 rounded-lg shadow-lg p-2 w-48 hidden z-10">
+          <!-- Options will be populated by JavaScript -->
+        </div>
+      </div>
+      
+      <!-- Video input selection -->
+      <div class="device-select-container relative">
+        <select id="video-input" class="device-select bg-gray-700 text-white rounded-full px-3 py-2 text-sm pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 hidden md:block" aria-label="Select camera">
+          <option value="">Loading...</option>
+        </select>
+        <button id="video-input-icon" class="device-icon w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 md:hidden" aria-label="Camera options">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+        </button>
+        <div id="video-input-popup" class="device-popup absolute bottom-full left-0 mb-2 bg-gray-800 rounded-lg shadow-lg p-2 w-48 hidden z-10">
+          <!-- Options will be populated by JavaScript -->
+        </div>
+      </div>
     </div>
 
     <button id="mic-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center" aria-label="Toggle microphone">
