@@ -14,7 +14,7 @@ Before running this application, you need to have the following installed:
 
 - [Node.js](https://nodejs.org/) (v14 or later)
 - [pnpm](https://pnpm.io/) (recommended) or [yarn](https://yarnpkg.com/)
-- [LiveKit CLI](https://docs.livekit.io/getting-started/cli/) for the development server
+- [LiveKit CLI](https://docs.livekit.io/home/get-started/intro-to-livekit/) for the development server
 
 ## Setup Instructions
 
