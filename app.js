@@ -295,7 +295,7 @@ function setupEventListeners() {
           // Publish the track with metadata to ensure it's recognized as screen share
           const publishOptions = {
             name: 'screen',
-            source: 'screenshare'
+            source: LivekitClient.Track.Source.ScreenShare
           };
           
           await room.localParticipant.publishTrack(screenShareTrack, publishOptions);
