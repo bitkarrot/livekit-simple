@@ -16,6 +16,7 @@ let currentRoom = '';
 let audioAnalysers = new Map();
 let roomEventsBound = false;
 let participantRefreshInterval = null;
+let initialGridUpdateDone = false; // New variable to track initial grid update
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', init);
@@ -704,19 +705,98 @@ async function joinRoom(username, roomName) {
       updateConnectionStatus('Connected');
       showToast(`Joined room: ${roomName}`);
       
-      // Start periodic participant refresh - only refresh when needed
+      // Start periodic participant refresh with improved detection
       participantRefreshInterval = setInterval(() => {
-        // Only update if we need to (new participants or disconnections)
-        const currentParticipantCount = room.participants ? room.participants.size : 0;
-        const displayedParticipantCount = document.querySelectorAll('#participants-container > div').length - 1; // Subtract 1 for local participant
-        
-        if (currentParticipantCount !== displayedParticipantCount) {
-          console.log('Participant count changed, refreshing grid');
-          updateParticipantGrid();
-        } else {
-          console.log('No change in participant count, skipping refresh');
+        // Always do an initial refresh when a participant joins
+        if (room) {
+          // Force an initial update when joining the room
+          if (!initialGridUpdateDone) {
+            console.log('Performing initial grid update');
+            updateParticipantGrid();
+            initialGridUpdateDone = true;
+            return;
+          }
+          
+          // Get the actual remote participants from the room
+          let remoteParticipantCount = 0;
+          
+          // Method 1: Check room.participants (standard Map in newer SDK versions)
+          if (room.participants instanceof Map) {
+            remoteParticipantCount = room.participants.size;
+            console.log('Remote participants from Map:', Array.from(room.participants.values()).map(p => p.identity));
+          } 
+          // Method 2: Try alternative ways to count participants
+          else if (room.participants) {
+            // Try to count participants from the object
+            try {
+              if (Array.isArray(room.participants)) {
+                remoteParticipantCount = room.participants.length;
+              } else if (typeof room.participants === 'object') {
+                remoteParticipantCount = Object.keys(room.participants).length;
+              }
+              console.log('Remote participants count from object:', remoteParticipantCount);
+            } catch (e) {
+              console.error('Error counting participants:', e);
+            }
+          }
+          
+          // Method 3: Check room.remoteParticipants as fallback
+          if (remoteParticipantCount === 0 && room.remoteParticipants) {
+            try {
+              if (room.remoteParticipants instanceof Map) {
+                remoteParticipantCount = room.remoteParticipants.size;
+              } else if (Array.isArray(room.remoteParticipants)) {
+                remoteParticipantCount = room.remoteParticipants.length;
+              } else if (typeof room.remoteParticipants === 'object') {
+                remoteParticipantCount = Object.keys(room.remoteParticipants).length;
+              }
+              console.log('Remote participants count from remoteParticipants:', remoteParticipantCount);
+            } catch (e) {
+              console.error('Error counting remote participants:', e);
+            }
+          }
+          
+          // Method 4: Last resort, check _state
+          if (remoteParticipantCount === 0 && room._state && room._state.participants) {
+            try {
+              const stateParticipants = Object.values(room._state.participants);
+              // Filter out the local participant
+              const remoteStateParticipants = stateParticipants.filter(p => 
+                p && p.sid && room.localParticipant && p.sid !== room.localParticipant.sid);
+              remoteParticipantCount = remoteStateParticipants.length;
+              console.log('Remote participants count from _state:', remoteParticipantCount);
+            } catch (e) {
+              console.error('Error counting state participants:', e);
+            }
+          }
+          
+          // Count displayed remote participant tiles (excluding screen shares and local participant)
+          const displayedParticipantTiles = Array.from(
+            document.querySelectorAll('#participants-container > div[id^="participant-"]')
+          ).filter(el => !el.id.includes(room.localParticipant.identity));
+          
+          const displayedParticipantCount = displayedParticipantTiles.length;
+          
+          // Count the local participant tile
+          const hasLocalParticipantTile = document.getElementById(`participant-${room.localParticipant.identity}`) !== null;
+          
+          console.log('Participant count check:', {
+            actualRemoteParticipants: remoteParticipantCount,
+            displayedRemoteTiles: displayedParticipantCount,
+            hasLocalTile: hasLocalParticipantTile
+          });
+          
+          // Always refresh if we're missing remote participants
+          if (remoteParticipantCount > displayedParticipantCount || !hasLocalParticipantTile) {
+            console.log('Missing participants, refreshing grid');
+            updateParticipantGrid();
+          } else {
+            console.log('All participants accounted for, updating existing tiles');
+            // Just update existing tiles without full refresh
+            updateExistingParticipantTiles();
+          }
         }
-      }, 2000);
+      }, 3000);
     } catch (connectionError) {
       console.error('[ERROR] Error connecting to room:', connectionError);
       updateConnectionStatus('Connection failed');
@@ -819,110 +899,198 @@ function updateConnectionStatus(status) {
 function updateParticipantGrid() {
   try {
     console.log('Updating participant grid');
-    // Clear the container
-    participantsContainer.innerHTML = '';
     
-    // Add local participant
-    if (room && room.localParticipant) {
-      console.log('Adding local participant to grid:', room.localParticipant.identity);
-      createParticipantTile(room.localParticipant, true);
-    }
-    
-    // Add remote participants
-    console.log('About to add remote participants to grid');
-    if (room) {
-      console.log('Room object exists, state:', room.state);
-      
-      // Track all remote participants we find
-      const processedParticipants = new Set();
-      let remoteParticipantsFound = 0;
-      
-      // Method 1: Check room.participants (standard Map in newer SDK versions)
-      if (room.participants) {
-        console.log('Room participants object type:', typeof room.participants);
-        console.log('Is participants a Map?', room.participants instanceof Map);
-        console.log('Participants keys:', [...room.participants.keys()]);
-        
-        // Get participants from the Map object
-        const remoteParticipants = Array.from(room.participants.values());
-        console.log('Remote participants from Map:', remoteParticipants.map(p => p.identity));
-        
-        // Iterate through the array of participants
-        remoteParticipants.forEach(participant => {
-          if (!processedParticipants.has(participant.sid)) {
-            console.log('Adding remote participant to grid (from Map):', participant.identity);
-            createParticipantTile(participant, false);
-            processedParticipants.add(participant.sid);
-            remoteParticipantsFound++;
-          }
-        });
-      } else {
-        console.log('room.participants is undefined');
-      }
-      
-      // Method 2: Check room.remoteParticipants (used in some SDK versions)
-      if (room.remoteParticipants) {
-        console.log('Checking room.remoteParticipants collection');
-        console.log('RemoteParticipants type:', typeof room.remoteParticipants);
-        
-        try {
-          // Try to get values from remoteParticipants (could be Map, Array, or Object)
-          let participants = [];
-          if (room.remoteParticipants instanceof Map) {
-            participants = Array.from(room.remoteParticipants.values());
-          } else if (Array.isArray(room.remoteParticipants)) {
-            participants = room.remoteParticipants;
-          } else if (typeof room.remoteParticipants === 'object') {
-            participants = Object.values(room.remoteParticipants);
-          }
-          
-          console.log('Remote participants from remoteParticipants:', 
-            participants.map(p => p.identity || 'Unknown'));
-          
-          // Add any participants not already processed
-          participants.forEach(participant => {
-            if (participant && participant.sid && !processedParticipants.has(participant.sid)) {
-              console.log('Adding remote participant to grid (from remoteParticipants):', 
-                participant.identity || 'Unknown');
-              createParticipantTile(participant, false);
-              processedParticipants.add(participant.sid);
-              remoteParticipantsFound++;
-            }
-          });
-        } catch (error) {
-          console.error('Error processing remoteParticipants:', error);
-        }
-      }
-      
-      // Method 3: Use _state internal property (last resort)
-      if (remoteParticipantsFound === 0 && room._state && room._state.participants) {
-        console.log('Trying to access internal _state.participants');
-        try {
-          const stateParticipants = Object.values(room._state.participants);
-          console.log('State participants:', stateParticipants.map(p => p.identity || 'Unknown'));
-          
-          stateParticipants.forEach(participant => {
-            if (participant && participant.sid && 
-                participant.sid !== room.localParticipant.sid && 
-                !processedParticipants.has(participant.sid)) {
-              console.log('Adding remote participant to grid (from _state):', 
-                participant.identity || 'Unknown');
-              createParticipantTile(participant, false);
-              processedParticipants.add(participant.sid);
-              remoteParticipantsFound++;
-            }
-          });
-        } catch (error) {
-          console.error('Error accessing internal state participants:', error);
-        }
-      }
-      
-      console.log(`Total remote participants found and displayed: ${remoteParticipantsFound}`);
-    } else {
+    if (!room) {
       console.log('Room object is not available');
+      return;
     }
+    
+    // Keep track of all participants we process
+    const processedParticipantIds = new Set();
+    const existingTiles = {};
+    
+    // First, gather all existing participant tiles
+    const existingElements = participantsContainer.querySelectorAll('[id^="participant-"]');
+    existingElements.forEach(el => {
+      const participantId = el.id.replace('participant-', '');
+      existingTiles[participantId] = el;
+    });
+    
+    // Process the local participant
+    if (room.localParticipant) {
+      const localId = room.localParticipant.identity;
+      processedParticipantIds.add(localId);
+      
+      if (existingTiles[localId]) {
+        // Update existing local participant tile
+        console.log('Updating existing local participant tile:', localId);
+        updateParticipantTile(existingTiles[localId], room.localParticipant, true);
+      } else {
+        // Create new local participant tile
+        console.log('Creating new local participant tile:', localId);
+        createParticipantTile(room.localParticipant, true);
+      }
+    }
+    
+    // Process remote participants
+    let remoteParticipants = [];
+    
+    // Method 1: Check room.participants (standard Map in newer SDK versions)
+    if (room.participants instanceof Map) {
+      remoteParticipants = Array.from(room.participants.values());
+      console.log('Found remote participants from Map:', remoteParticipants.map(p => p.identity));
+    } 
+    // Method 2: Try alternative ways to get participants
+    else if (room.participants) {
+      try {
+        if (Array.isArray(room.participants)) {
+          remoteParticipants = room.participants;
+        } else if (typeof room.participants === 'object') {
+          remoteParticipants = Object.values(room.participants);
+        }
+        console.log('Found remote participants from object:', remoteParticipants.map(p => p.identity));
+      } catch (e) {
+        console.error('Error getting participants:', e);
+      }
+    }
+    
+    // Method 3: Check room.remoteParticipants as fallback
+    if (remoteParticipants.length === 0 && room.remoteParticipants) {
+      try {
+        if (room.remoteParticipants instanceof Map) {
+          remoteParticipants = Array.from(room.remoteParticipants.values());
+        } else if (Array.isArray(room.remoteParticipants)) {
+          remoteParticipants = room.remoteParticipants;
+        } else if (typeof room.remoteParticipants === 'object') {
+          remoteParticipants = Object.values(room.remoteParticipants);
+        }
+        console.log('Found remote participants from remoteParticipants:', remoteParticipants.map(p => p.identity));
+      } catch (e) {
+        console.error('Error getting remote participants:', e);
+      }
+    }
+    
+    // Method 4: Last resort, check _state
+    if (remoteParticipants.length === 0 && room._state && room._state.participants) {
+      try {
+        const stateParticipants = Object.values(room._state.participants);
+        // Filter out the local participant
+        remoteParticipants = stateParticipants.filter(p => 
+          p && p.sid && room.localParticipant && p.sid !== room.localParticipant.sid);
+        console.log('Found remote participants from _state:', remoteParticipants.map(p => p.identity || 'Unknown'));
+      } catch (e) {
+        console.error('Error getting state participants:', e);
+      }
+    }
+    
+    console.log(`Processing ${remoteParticipants.length} remote participants`);
+    remoteParticipants.forEach(participant => {
+      if (!participant || !participant.identity) {
+        console.log('Skipping invalid participant:', participant);
+        return;
+      }
+      
+      const remoteId = participant.identity;
+      processedParticipantIds.add(remoteId);
+      
+      console.log('Processing remote participant:', remoteId);
+      
+      if (existingTiles[remoteId]) {
+        // Update existing remote participant tile
+        console.log('Updating existing remote participant tile:', remoteId);
+        updateParticipantTile(existingTiles[remoteId], participant, false);
+      } else {
+        // Create new remote participant tile
+        console.log('Creating new remote participant tile:', remoteId);
+        createParticipantTile(participant, false);
+      }
+    });
+    
+    // Remove tiles for participants who are no longer in the room
+    Object.keys(existingTiles).forEach(participantId => {
+      if (!processedParticipantIds.has(participantId)) {
+        console.log('Removing tile for disconnected participant:', participantId);
+        existingTiles[participantId].remove();
+      }
+    });
+    
   } catch (error) {
     console.error('[ERROR] Error updating participant grid:', error);
+  }
+}
+
+// Update an existing participant tile
+function updateParticipantTile(tileElement, participant, isLocal) {
+  try {
+    // Update video if needed
+    const videoContainer = tileElement.querySelector('div:first-child');
+    const existingVideo = videoContainer.querySelector('video');
+    const videoPublication = participant.getTrackPublication(LivekitClient.Track.Source.Camera);
+    
+    if (videoPublication && videoPublication.track && !videoPublication.isMuted) {
+      if (!existingVideo) {
+        // Add video if not present
+        const videoElement = videoPublication.track.attach();
+        videoElement.autoplay = true;
+        videoElement.className = 'w-full h-full object-cover';
+        
+        // If this is the local participant, mirror the video
+        if (isLocal) {
+          videoElement.style.transform = 'scaleX(-1)';
+        }
+        
+        videoContainer.appendChild(videoElement);
+      }
+    } else if (existingVideo) {
+      // Remove video if track is muted or no longer available
+      existingVideo.remove();
+    }
+    
+    // Update audio indicator
+    const audioIndicator = tileElement.querySelector(`#audio-indicator-${participant.identity}`);
+    const audioPublication = participant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+    
+    if (audioPublication && !audioPublication.isMuted) {
+      audioIndicator.classList.add('bg-green-500');
+      audioIndicator.classList.remove('bg-red-500');
+    } else {
+      audioIndicator.classList.add('bg-red-500');
+      audioIndicator.classList.remove('bg-green-500');
+    }
+    
+    // Check for screen share
+    const screenShareIndicator = tileElement.querySelector('.bg-blue-600');
+    const screenPublication = participant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);
+    
+    if (screenPublication && screenPublication.track && !screenPublication.isMuted) {
+      // Add screen share indicator if not present
+      if (!screenShareIndicator) {
+        const indicator = document.createElement('div');
+        indicator.className = 'absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded';
+        indicator.textContent = 'Sharing Screen';
+        videoContainer.appendChild(indicator);
+      }
+      
+      // Create or update screen share tile
+      const screenTileId = `screen-${participant.identity}`;
+      let screenTile = document.getElementById(screenTileId);
+      
+      if (!screenTile) {
+        createScreenShareTile(participant, screenPublication);
+      }
+    } else if (screenShareIndicator) {
+      // Remove screen share indicator if no longer sharing
+      screenShareIndicator.remove();
+      
+      // Remove screen share tile
+      const screenTileId = `screen-${participant.identity}`;
+      const screenTile = document.getElementById(screenTileId);
+      if (screenTile) {
+        screenTile.remove();
+      }
+    }
+  } catch (error) {
+    console.error('Error updating participant tile:', error);
   }
 }
 
@@ -1271,4 +1439,32 @@ function showToast(message, duration = 3000) {
   setTimeout(() => {
     toast.classList.add('hidden');
   }, duration);
+}
+
+// Update existing participant tiles
+function updateExistingParticipantTiles() {
+  try {
+    console.log('Updating existing participant tiles');
+    
+    // Process the local participant
+    if (room.localParticipant) {
+      const localId = room.localParticipant.identity;
+      const localTile = document.getElementById(`participant-${localId}`);
+      if (localTile) {
+        updateParticipantTile(localTile, room.localParticipant, true);
+      }
+    }
+    
+    // Process remote participants
+    const remoteParticipants = Array.from(room.participants?.values() || []);
+    remoteParticipants.forEach(participant => {
+      const remoteId = participant.identity;
+      const remoteTile = document.getElementById(`participant-${remoteId}`);
+      if (remoteTile) {
+        updateParticipantTile(remoteTile, participant, false);
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR] Error updating existing participant tiles:', error);
+  }
 }
