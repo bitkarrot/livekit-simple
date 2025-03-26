@@ -1,6 +1,6 @@
 # LiveKit Simple Video Conference Demo
 
-A simple video conferencing application built with LiveKit and Node.js. This demo showcases basic LiveKit functionality including:
+A simple video conferencing application built with LiveKit and Astro in Vanilla JS. This demo showcases basic LiveKit functionality including:
 
 - Video and audio conferencing
 - Device selection (camera, microphone)
@@ -12,7 +12,7 @@ A simple video conferencing application built with LiveKit and Node.js. This dem
 
 Before running this application, you need to have the following installed:
 
-- [Node.js](https://nodejs.org/) (v14 or later)
+- [Astro](https://astro.build/)
 - [pnpm](https://pnpm.io/) (recommended) or [yarn](https://yarnpkg.com/)
 - [LiveKit CLI](https://docs.livekit.io/home/get-started/intro-to-livekit/) for the development server
 
@@ -51,7 +51,7 @@ These are the default values for the LiveKit development server. You can modify 
 
 ## Running the Application
 
-To run the application, you need to start both the LiveKit development server and the Node.js server.
+To run the application, you need to start both the LiveKit development server and the Astro server.
 
 ### 1. Start the LiveKit Development Server
 
@@ -69,16 +69,12 @@ For network access (to allow other devices to connect), use:
 livekit-server --dev --bind 0.0.0.0
 ```
 
-### 2. Start the Node.js Server
+### 2. Start the AstroServer
 
 Open another terminal window, navigate to the project directory, and run:
 
 ```bash
-# Using node directly
-node server.js
-
-# Or if you have nodemon installed for development
-nodemon server.js
+pnpm run dev
 ```
 
 The server will start on port 3000 (or the port specified in your `.env` file).
@@ -107,7 +103,7 @@ http://localhost:3000
 
 If you encounter connection issues:
 
-1. Make sure both the LiveKit server and Node.js server are running
+1. Make sure both the LiveKit server and Astro server are running
 2. Check that the WebSocket URL in the `.env` file matches your LiveKit server address
 3. For local development, use `ws://` protocol (not `wss://`)
 4. Check browser console for detailed error messages
@@ -123,7 +119,7 @@ If you have camera or microphone permission issues:
 ## Development Notes
 
 - The application uses the LiveKit Client SDK loaded via CDN
-- The server uses Express.js to serve static files and handle token generation
+- The server uses Astro to serve static files and handle token generation
 - Media device selection is handled through the browser's Media Devices API
 
 ## License
@@ -133,4 +129,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - [LiveKit](https://livekit.io/) for the WebRTC platform
-- [Express.js](https://expressjs.com/) for the web server framework
+- [Astro](https://astro.build/) for the web server framework
