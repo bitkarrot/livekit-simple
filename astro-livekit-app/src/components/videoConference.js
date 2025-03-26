@@ -1069,6 +1069,7 @@ function updateParticipantGrid() {
         // Create a container for participant tiles
         participantTilesContainer = document.createElement('div');
         participantTilesContainer.className = 'participant-tiles-container';
+        participantTilesContainer.style.display = 'none'; // Hide participant tiles in focus mode
         participantsContainer.appendChild(participantTilesContainer);
       }
       
@@ -1079,10 +1080,21 @@ function updateParticipantGrid() {
         }
       });
       
-      // Keep screen share tiles at the top level
+      // Keep screen share tiles at the top level and ensure they're visible
       const screenShareTiles = participantsContainer.querySelectorAll('[id^="screen-"]');
       screenShareTiles.forEach(el => {
+        // Make sure screen share is at the top level
         participantsContainer.insertBefore(el, participantTilesContainer);
+        
+        // Ensure it's visible and has the correct styles
+        el.style.position = 'absolute';
+        el.style.top = '0';
+        el.style.left = '0';
+        el.style.width = '100%';
+        el.style.height = '100%';
+        el.style.maxWidth = '100%';
+        el.style.maxHeight = '100vh';
+        el.style.zIndex = '10';
       });
     } else {
       // If switching back from focus layout, move all tiles back to the main container
@@ -1095,6 +1107,19 @@ function updateParticipantGrid() {
         // Remove the participant tiles container
         participantTilesContainer.remove();
       }
+      
+      // Reset any inline styles on screen share tiles
+      const screenShareTiles = participantsContainer.querySelectorAll('[id^="screen-"]');
+      screenShareTiles.forEach(el => {
+        el.style.position = '';
+        el.style.top = '';
+        el.style.left = '';
+        el.style.width = '';
+        el.style.height = '';
+        el.style.maxWidth = '';
+        el.style.maxHeight = '';
+        el.style.zIndex = '';
+      });
     }
     
     // Process the local participant
@@ -1156,8 +1181,9 @@ function updateParticipantGrid() {
       try {
         const stateParticipants = Object.values(room._state.participants);
         // Filter out the local participant
-        remoteParticipants = stateParticipants.filter(p => 
+        const remoteStateParticipants = stateParticipants.filter(p => 
           p && p.sid && room.localParticipant && p.sid !== room.localParticipant.sid);
+        remoteParticipants = remoteStateParticipants;
         console.log('Found remote participants from _state:', remoteParticipants.map(p => p.identity || 'Unknown'));
       } catch (e) {
         console.error('Error getting state participants:', e);
