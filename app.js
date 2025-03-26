@@ -1098,7 +1098,8 @@ function updateParticipantTile(tileElement, participant, isLocal) {
 function createParticipantTile(participant, isLocal) {
   const tile = document.createElement('div');
   tile.id = `participant-${participant.identity}`;
-  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video';
+  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden';
+  tile.style.cssText = 'aspect-ratio: 16/9;';
   
   // Create video container
   const videoContainer = document.createElement('div');
@@ -1205,11 +1206,13 @@ function createScreenShareTile(participant, screenPublication) {
   
   const tile = document.createElement('div');
   tile.id = `screen-${participant.identity}`;
-  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video';
+  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden';
+  tile.style.cssText = 'aspect-ratio: 16/9;';
   
   // Create screen container
   const screenContainer = document.createElement('div');
   screenContainer.className = 'absolute inset-0';
+  tile.appendChild(screenContainer);
   
   // Attach screen share
   console.log('Attaching screen share track:', screenPublication.trackSid);
@@ -1228,7 +1231,6 @@ function createScreenShareTile(participant, screenPublication) {
   label.textContent = `${participant.identity}'s Screen`;
   infoBar.appendChild(label);
   
-  tile.appendChild(screenContainer);
   tile.appendChild(infoBar);
   participantsContainer.appendChild(tile);
   
@@ -1241,11 +1243,13 @@ function createDirectScreenShareTile(participant, track) {
   
   const tile = document.createElement('div');
   tile.id = `screen-direct-${participant.identity}`;
-  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video';
+  tile.className = 'relative bg-gray-800 rounded-lg overflow-hidden';
+  tile.style.cssText = 'aspect-ratio: 16/9;';
   
   // Create screen container
   const screenContainer = document.createElement('div');
   screenContainer.className = 'absolute inset-0';
+  tile.appendChild(screenContainer);
   
   // Attach screen share directly
   console.log('Attaching screen share track directly');
@@ -1264,7 +1268,6 @@ function createDirectScreenShareTile(participant, track) {
   label.textContent = `${participant.identity}'s Screen (Direct)`;
   infoBar.appendChild(label);
   
-  tile.appendChild(screenContainer);
   tile.appendChild(infoBar);
   participantsContainer.appendChild(tile);
   

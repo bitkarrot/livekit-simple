@@ -8,6 +8,47 @@
   <link rel="stylesheet" href="styles.css">
   <!-- LiveKit Client SDK - using the correct UMD build from the documentation -->
   <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <!-- Custom styles -->
+  <style>
+    #participants-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      grid-gap: 1rem;
+      padding: 1rem;
+      overflow: auto;
+    }
+    
+    #participants-container > div {
+      aspect-ratio: 16/9;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      min-width: 0;
+      min-height: 0;
+    }
+    
+    /* For screens less than 667px wide */
+    @media (max-width: 667px) {
+      #participants-container {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        grid-gap: 0.5rem;
+        padding: 0.5rem;
+      }
+      
+      #participants-container > div {
+        max-width: 200px;
+        max-height: 112.5px; /* Maintains 16:9 ratio (200px ÷ 16 × 9 = 112.5px) */
+      }
+    }
+    
+    /* For very small screens, reduce padding further */
+    @media (max-width: 400px) {
+      #participants-container {
+        padding: 0.25rem;
+        grid-gap: 0.25rem;
+      }
+    }
+  </style>
   <!-- Simple-peer for WebRTC -->
   <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
   <!-- App JS - load after LiveKit -->
@@ -20,7 +61,7 @@
   </div>
 
   <!-- Main video container -->
-  <div id="participants-container" class="flex-1 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-auto">
+  <div id="participants-container" class="flex-1 p-4">
     <!-- Participant tiles will be dynamically added here -->
   </div>
 
