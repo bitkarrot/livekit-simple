@@ -568,6 +568,17 @@ function setupRoomEvents() {
           layoutBtn.classList.add('disabled');
         }
       }
+      
+      // Remove the screen share tile from the DOM
+      const screenTile = document.getElementById(`screen-${participant.identity}`);
+      if (screenTile) {
+        screenTile.remove();
+      }
+      
+      // Force a complete grid update to reorganize tiles
+      setTimeout(() => {
+        updateParticipantGrid();
+      }, 100);
     }
     
     updateParticipantGrid();
@@ -575,6 +586,20 @@ function setupRoomEvents() {
   
   room.on(LivekitClient.RoomEvent.TrackMuted, (publication, participant) => {
     console.log('Track muted:', publication.kind, 'from', participant.identity);
+    
+    // Special handling for screen share tracks
+    if (publication.source === LivekitClient.Track.Source.ScreenShare) {
+      console.log('Screen share track muted from:', participant.identity);
+      
+      // If this was the active screen share, handle it similar to unsubscribe
+      if (activeScreenShareId === participant.identity) {
+        // Force a complete grid update to reorganize tiles
+        setTimeout(() => {
+          updateParticipantGrid();
+        }, 100);
+      }
+    }
+    
     // Only update grid if the room is still connected
     if (room && room.state === LivekitClient.ConnectionState.Connected) {
       updateParticipantGrid();
@@ -583,6 +608,20 @@ function setupRoomEvents() {
   
   room.on(LivekitClient.RoomEvent.TrackUnmuted, (publication, participant) => {
     console.log('Track unmuted:', publication.kind, 'from', participant.identity);
+    
+    // Special handling for screen share tracks
+    if (publication.source === LivekitClient.Track.Source.ScreenShare) {
+      console.log('Screen share track unmuted from:', participant.identity);
+      
+      // Set as active screen share
+      activeScreenShareId = participant.identity;
+      
+      // Force a complete grid update to reorganize tiles
+      setTimeout(() => {
+        updateParticipantGrid();
+      }, 100);
+    }
+    
     // Only update grid if the room is still connected
     if (room && room.state === LivekitClient.ConnectionState.Connected) {
       updateParticipantGrid();
