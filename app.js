@@ -9,12 +9,13 @@ let micIcon, micOffIcon, cameraIcon, cameraOffIcon, statusBanner, statusText;
 let audioInputSelect, videoInputSelect, toast, toastMessage;
 
 // State
-let micEnabled = true;
-let cameraEnabled = true;
+let micEnabled = false;
+let cameraEnabled = false;
 let screenShareTrack = null;
 let currentRoom = '';
 let audioAnalysers = new Map();
 let roomEventsBound = false;
+let participantRefreshInterval = null;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', init);
@@ -59,8 +60,18 @@ async function init() {
       dynacast: true,
       videoCaptureDefaults: {
         resolution: { width: 640, height: 480 }
-      }
+      }, 
+      publishDefaults: {
+        simulcast: true
+      },
+      autoSubscribe: true
     });
+    
+    // Initialize the participants Map if it doesn't exist
+    if (!room.participants) {
+      console.log('Creating participants Map since it was undefined');
+      room.participants = new Map();
+    }
     
     // Populate device selection dropdowns
     await populateDeviceOptions();
@@ -413,12 +424,31 @@ function setupRoomEvents() {
   // Participant events
   room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
     console.log('Participant connected:', participant.identity);
+    
+    // Ensure the participant is added to the participants Map
+    if (room.participants) {
+      room.participants.set(participant.sid, participant);
+      console.log('Added participant to Map:', participant.identity, 'with SID:', participant.sid);
+    } else {
+      console.log('Cannot add participant to Map - room.participants is undefined');
+    }
+    
+    console.log('Current participants after connection:', 
+      Array.from(room.participants?.entries() || []).map(([sid, p]) => ({ sid, identity: p.identity }))
+    );
     showToast(`${participant.identity} joined the room`);
     updateParticipantGrid();
   });
   
   room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
     console.log('Participant disconnected:', participant.identity);
+    
+    // Remove the participant from the participants Map
+    if (room.participants && participant.sid) {
+      room.participants.delete(participant.sid);
+      console.log('Removed participant from Map:', participant.identity, 'with SID:', participant.sid);
+    }
+    
     showToast(`${participant.identity} left the room`);
     updateParticipantGrid();
   });
@@ -484,27 +514,26 @@ function setupRoomEvents() {
 
 // Clean up room resources
 function cleanupRoom() {
-  // Clean up audio analyzers
-  audioAnalysers.forEach((analyserData) => {
-    if (analyserData.audioContext) {
-      try {
-        analyserData.audioContext.close();
-      } catch (e) {
-        console.error('Error closing audio context:', e);
-      }
-    }
-  });
+  // Clear any existing audio analyzers
   audioAnalysers.clear();
   
   // Reset state
-  micEnabled = true;
-  cameraEnabled = true;
+  micEnabled = false;
+  cameraEnabled = false;
   screenShareTrack = null;
   roomEventsBound = false;
   
-  // Update UI
-  updateMicButton();
-  updateCameraButton();
+  // Clear participant refresh interval
+  if (participantRefreshInterval) {
+    clearInterval(participantRefreshInterval);
+    participantRefreshInterval = null;
+  }
+  
+  // Clean up room object
+  if (room) {
+    room.removeAllListeners();
+    room = null;
+  }
 }
 
 // Join a room
@@ -545,8 +574,18 @@ async function joinRoom(username, roomName) {
       dynacast: true,
       videoCaptureDefaults: {
         resolution: { width: 640, height: 480 }
-      }
+      }, 
+      publishDefaults: {
+        simulcast: true
+      },
+      autoSubscribe: true
     });
+    
+    // Initialize the participants Map if it doesn't exist
+    if (!room.participants) {
+      console.log('Creating participants Map since it was undefined');
+      room.participants = new Map();
+    }
     
     // Setup room events
     setupRoomEvents();
@@ -564,11 +603,68 @@ async function joinRoom(username, roomName) {
       
       console.log('Connecting to LiveKit server at:', wsUrl);
       
+      // Connect with explicit options to ensure we get remote participants
       await room.connect(wsUrl, token, {
         autoSubscribe: true
       });
       
       console.log('Connected to room:', room.name);
+      console.log('Room state after connection:', room.state);
+      console.log('Initial participants:', Array.from(room.participants?.entries() || []).map(([sid, p]) => ({ sid, identity: p.identity })));
+      
+      // Manual participant discovery - request the list of participants from the server
+      try {
+        console.log('Attempting manual participant discovery');
+        
+        // If room.participants is empty or undefined, try to get participants from the server
+        if (!room.participants || room.participants.size === 0) {
+          // Try to access the internal LiveKit client if available
+          if (room._client && typeof room._client.getParticipants === 'function') {
+            console.log('Using internal LiveKit client to get participants');
+            const serverParticipants = await room._client.getParticipants();
+            console.log('Server participants:', serverParticipants);
+            
+            // Initialize participants Map if needed
+            if (!room.participants) {
+              room.participants = new Map();
+            }
+            
+            // Add each participant to our Map
+            serverParticipants.forEach(participantInfo => {
+              if (participantInfo.sid && participantInfo.identity && participantInfo.sid !== room.localParticipant.sid) {
+                // Create a basic RemoteParticipant object if the SDK doesn't provide one
+                const remoteParticipant = new LivekitClient.RemoteParticipant(
+                  participantInfo.sid,
+                  participantInfo.identity,
+                  { metadata: participantInfo.metadata }
+                );
+                
+                room.participants.set(participantInfo.sid, remoteParticipant);
+                console.log('Manually added participant:', participantInfo.identity, 'with SID:', participantInfo.sid);
+              }
+            });
+          } else {
+            console.log('LiveKit client getParticipants method not available');
+          }
+        }
+      } catch (discoveryError) {
+        console.error('Error during manual participant discovery:', discoveryError);
+      }
+      
+      // Request an update of participants from the server
+      if (typeof room.syncState === 'function') {
+        try {
+          console.log('Requesting participant sync from server');
+          await room.syncState();
+          console.log('Sync completed, participants after sync:', 
+            Array.from(room.participants?.entries() || []).map(([sid, p]) => ({ sid, identity: p.identity }))
+          );
+        } catch (syncError) {
+          console.error('Error syncing room state:', syncError);
+        }
+      } else {
+        console.log('Room.syncState method not available in this version of LiveKit');
+      }
       
       // Save current room name
       currentRoom = roomName;
@@ -607,6 +703,20 @@ async function joinRoom(username, roomName) {
       // Update connection status
       updateConnectionStatus('Connected');
       showToast(`Joined room: ${roomName}`);
+      
+      // Start periodic participant refresh - only refresh when needed
+      participantRefreshInterval = setInterval(() => {
+        // Only update if we need to (new participants or disconnections)
+        const currentParticipantCount = room.participants ? room.participants.size : 0;
+        const displayedParticipantCount = document.querySelectorAll('#participants-container > div').length - 1; // Subtract 1 for local participant
+        
+        if (currentParticipantCount !== displayedParticipantCount) {
+          console.log('Participant count changed, refreshing grid');
+          updateParticipantGrid();
+        } else {
+          console.log('No change in participant count, skipping refresh');
+        }
+      }, 2000);
     } catch (connectionError) {
       console.error('[ERROR] Error connecting to room:', connectionError);
       updateConnectionStatus('Connection failed');
@@ -719,11 +829,97 @@ function updateParticipantGrid() {
     }
     
     // Add remote participants
-    if (room && room.participants) {
-      room.participants.forEach(participant => {
-        console.log('Adding remote participant to grid:', participant.identity);
-        createParticipantTile(participant, false);
-      });
+    console.log('About to add remote participants to grid');
+    if (room) {
+      console.log('Room object exists, state:', room.state);
+      
+      // Track all remote participants we find
+      const processedParticipants = new Set();
+      let remoteParticipantsFound = 0;
+      
+      // Method 1: Check room.participants (standard Map in newer SDK versions)
+      if (room.participants) {
+        console.log('Room participants object type:', typeof room.participants);
+        console.log('Is participants a Map?', room.participants instanceof Map);
+        console.log('Participants keys:', [...room.participants.keys()]);
+        
+        // Get participants from the Map object
+        const remoteParticipants = Array.from(room.participants.values());
+        console.log('Remote participants from Map:', remoteParticipants.map(p => p.identity));
+        
+        // Iterate through the array of participants
+        remoteParticipants.forEach(participant => {
+          if (!processedParticipants.has(participant.sid)) {
+            console.log('Adding remote participant to grid (from Map):', participant.identity);
+            createParticipantTile(participant, false);
+            processedParticipants.add(participant.sid);
+            remoteParticipantsFound++;
+          }
+        });
+      } else {
+        console.log('room.participants is undefined');
+      }
+      
+      // Method 2: Check room.remoteParticipants (used in some SDK versions)
+      if (room.remoteParticipants) {
+        console.log('Checking room.remoteParticipants collection');
+        console.log('RemoteParticipants type:', typeof room.remoteParticipants);
+        
+        try {
+          // Try to get values from remoteParticipants (could be Map, Array, or Object)
+          let participants = [];
+          if (room.remoteParticipants instanceof Map) {
+            participants = Array.from(room.remoteParticipants.values());
+          } else if (Array.isArray(room.remoteParticipants)) {
+            participants = room.remoteParticipants;
+          } else if (typeof room.remoteParticipants === 'object') {
+            participants = Object.values(room.remoteParticipants);
+          }
+          
+          console.log('Remote participants from remoteParticipants:', 
+            participants.map(p => p.identity || 'Unknown'));
+          
+          // Add any participants not already processed
+          participants.forEach(participant => {
+            if (participant && participant.sid && !processedParticipants.has(participant.sid)) {
+              console.log('Adding remote participant to grid (from remoteParticipants):', 
+                participant.identity || 'Unknown');
+              createParticipantTile(participant, false);
+              processedParticipants.add(participant.sid);
+              remoteParticipantsFound++;
+            }
+          });
+        } catch (error) {
+          console.error('Error processing remoteParticipants:', error);
+        }
+      }
+      
+      // Method 3: Use _state internal property (last resort)
+      if (remoteParticipantsFound === 0 && room._state && room._state.participants) {
+        console.log('Trying to access internal _state.participants');
+        try {
+          const stateParticipants = Object.values(room._state.participants);
+          console.log('State participants:', stateParticipants.map(p => p.identity || 'Unknown'));
+          
+          stateParticipants.forEach(participant => {
+            if (participant && participant.sid && 
+                participant.sid !== room.localParticipant.sid && 
+                !processedParticipants.has(participant.sid)) {
+              console.log('Adding remote participant to grid (from _state):', 
+                participant.identity || 'Unknown');
+              createParticipantTile(participant, false);
+              processedParticipants.add(participant.sid);
+              remoteParticipantsFound++;
+            }
+          });
+        } catch (error) {
+          console.error('Error accessing internal state participants:', error);
+        }
+      }
+      
+      console.log(`Total remote participants found and displayed: ${remoteParticipantsFound}`);
+    } else {
+      console.log('Room object is not available');
     }
   } catch (error) {
     console.error('[ERROR] Error updating participant grid:', error);
