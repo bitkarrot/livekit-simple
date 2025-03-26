@@ -4,7 +4,7 @@ let isReconnecting = false;
 
 // DOM elements - wait for DOM to be fully loaded before accessing
 let connectModal, permissionsWarning, joinBtn, usernameInput, roomInput;
-let participantsContainer, micBtn, cameraBtn, screenBtn, inviteBtn, leaveBtn;
+let participantsContainer, micBtn, cameraBtn, screenBtn, inviteBtn, leaveBtn, layoutBtn;
 let micIcon, micOffIcon, cameraIcon, cameraOffIcon, statusBanner, statusText;
 let audioInputSelect, videoInputSelect, toast, toastMessage;
 
@@ -17,6 +17,8 @@ let audioAnalysers = new Map();
 let roomEventsBound = false;
 let participantRefreshInterval = null;
 let initialGridUpdateDone = false; // New variable to track initial grid update
+let isFocusLayout = false; // Track if we're in focus layout mode
+let activeScreenShareId = null; // Track the active screen share participant ID
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', init);
@@ -34,6 +36,7 @@ async function init() {
   micBtn = document.getElementById('mic-btn');
   cameraBtn = document.getElementById('camera-btn');
   screenBtn = document.getElementById('screen-btn');
+  layoutBtn = document.getElementById('layout-btn');
   inviteBtn = document.getElementById('invite-btn');
   leaveBtn = document.getElementById('leave-btn');
   micIcon = document.getElementById('mic-icon');
@@ -251,6 +254,14 @@ function setupEventListeners() {
         screenBtn.classList.remove('bg-blue-600');
         screenBtn.classList.add('bg-gray-700');
         showToast('Screen sharing stopped');
+        
+        // Reset active screen share ID
+        activeScreenShareId = null;
+        
+        // If we're in focus layout, update the grid
+        if (isFocusLayout) {
+          updateParticipantGrid();
+        }
       } else {
         // Start screen sharing
         try {
@@ -306,10 +317,16 @@ function setupEventListeners() {
           screenBtn.classList.add('bg-blue-600');
           showToast('Screen sharing started');
           
-          // Wait a short time for the track publication to be registered
-          setTimeout(() => {
-            updateParticipantGrid();
-          }, 1000);
+          // Enable the layout button when screen sharing starts
+          layoutBtn.disabled = false;
+          layoutBtn.classList.remove('opacity-50');
+          layoutBtn.classList.remove('disabled');
+          
+          // Set this participant as the active screen share
+          activeScreenShareId = room.localParticipant.identity;
+          
+          // Force update the participant grid
+          updateParticipantGrid();
         } catch (screenError) {
           // Handle user cancellation (not a real error)
           if (screenError.name === 'NotAllowedError' || screenError.message.includes('Permission denied')) {
@@ -329,14 +346,53 @@ function setupEventListeners() {
   
   // Invite link
   inviteBtn.addEventListener('click', () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', currentRoom);
-    navigator.clipboard.writeText(url.toString())
-      .then(() => showToast('Invite link copied to clipboard'))
-      .catch(error => {
-        console.error('Failed to copy invite link:', error);
-        showToast('Failed to copy invite link');
-      });
+    try {
+      const inviteLink = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(currentRoom);
+      navigator.clipboard.writeText(inviteLink)
+        .then(() => {
+          showToast('Invite link copied to clipboard');
+        })
+        .catch(err => {
+          console.error('Could not copy invite link:', err);
+          showToast('Failed to copy invite link');
+        });
+    } catch (error) {
+      console.error('Error copying invite link:', error);
+      showToast('Failed to copy invite link');
+    }
+  });
+  
+  // Layout toggle button
+  layoutBtn.addEventListener('click', () => {
+    try {
+      // Only allow layout toggle when there's an active screen share
+      if (!activeScreenShareId && !hasAnyScreenShare()) {
+        showToast('Layout toggle is only available when screen sharing is active');
+        return;
+      }
+      
+      // Toggle focus layout
+      isFocusLayout = !isFocusLayout;
+      
+      // Update button appearance
+      if (isFocusLayout) {
+        layoutBtn.classList.remove('bg-gray-700');
+        layoutBtn.classList.add('bg-blue-600');
+        showToast('Focus layout enabled - Screen share is now full screen');
+        participantsContainer.classList.add('focus-layout');
+      } else {
+        layoutBtn.classList.remove('bg-blue-600');
+        layoutBtn.classList.add('bg-gray-700');
+        showToast('Grid layout enabled');
+        participantsContainer.classList.remove('focus-layout');
+      }
+      
+      // Reorganize the grid
+      updateParticipantGrid();
+    } catch (error) {
+      console.error('Error toggling layout:', error);
+      showToast('Failed to toggle layout');
+    }
   });
   
   // Leave button
@@ -457,6 +513,27 @@ function setupRoomEvents() {
   // Track events
   room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
     console.log('Track subscribed:', track.kind, 'from', participant.identity);
+    
+    // Special handling for screen share tracks
+    if (track.source === LivekitClient.Track.Source.ScreenShare) {
+      console.log('Screen share track subscribed from:', participant.identity);
+      
+      // Set as active screen share
+      activeScreenShareId = participant.identity;
+      
+      // Enable the layout button
+      layoutBtn.disabled = false;
+      layoutBtn.classList.remove('opacity-50');
+      layoutBtn.classList.remove('disabled');
+      
+      // If we're already in focus layout, make sure the UI reflects that
+      if (isFocusLayout) {
+        layoutBtn.classList.remove('bg-gray-700');
+        layoutBtn.classList.add('bg-blue-600');
+        participantsContainer.classList.add('focus-layout');
+      }
+    }
+    
     updateParticipantGrid();
     
     if (track.kind === LivekitClient.Track.Kind.Audio) {
@@ -466,6 +543,33 @@ function setupRoomEvents() {
   
   room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
     console.log('Track unsubscribed:', track.kind, 'from', participant.identity);
+    
+    // Special handling for screen share tracks
+    if (track.source === LivekitClient.Track.Source.ScreenShare) {
+      console.log('Screen share track unsubscribed from:', participant.identity);
+      
+      // If this was the active screen share, reset it
+      if (activeScreenShareId === participant.identity) {
+        activeScreenShareId = null;
+        
+        // If we're in focus layout but no more screen shares, revert to normal layout
+        if (isFocusLayout && !hasAnyScreenShare()) {
+          isFocusLayout = false;
+          layoutBtn.classList.remove('bg-blue-600');
+          layoutBtn.classList.add('bg-gray-700');
+          participantsContainer.classList.remove('focus-layout');
+          showToast('Returned to grid layout');
+        }
+        
+        // If there are no more screen shares, disable the layout button
+        if (!hasAnyScreenShare()) {
+          layoutBtn.disabled = true;
+          layoutBtn.classList.add('opacity-50');
+          layoutBtn.classList.add('disabled');
+        }
+      }
+    }
+    
     updateParticipantGrid();
   });
   
@@ -916,6 +1020,44 @@ function updateParticipantGrid() {
       existingTiles[participantId] = el;
     });
     
+    // Clear the participants container if in focus layout
+    if (isFocusLayout) {
+      // In focus layout, we'll reorganize the tiles
+      // First, check if we need to create a container for participant tiles
+      let participantTilesContainer = participantsContainer.querySelector('.participant-tiles-container');
+      
+      if (!participantTilesContainer) {
+        // Create a container for participant tiles
+        participantTilesContainer = document.createElement('div');
+        participantTilesContainer.className = 'participant-tiles-container';
+        participantsContainer.appendChild(participantTilesContainer);
+      }
+      
+      // Move all participant tiles to the container
+      existingElements.forEach(el => {
+        if (!el.id.startsWith('screen-')) {
+          participantTilesContainer.appendChild(el);
+        }
+      });
+      
+      // Keep screen share tiles at the top level
+      const screenShareTiles = participantsContainer.querySelectorAll('[id^="screen-"]');
+      screenShareTiles.forEach(el => {
+        participantsContainer.insertBefore(el, participantTilesContainer);
+      });
+    } else {
+      // If switching back from focus layout, move all tiles back to the main container
+      const participantTilesContainer = participantsContainer.querySelector('.participant-tiles-container');
+      if (participantTilesContainer) {
+        // Move all participant tiles back to the main container
+        while (participantTilesContainer.firstChild) {
+          participantsContainer.appendChild(participantTilesContainer.firstChild);
+        }
+        // Remove the participant tiles container
+        participantTilesContainer.remove();
+      }
+    }
+    
     // Process the local participant
     if (room.localParticipant) {
       const localId = room.localParticipant.identity;
@@ -1188,7 +1330,7 @@ function createParticipantTile(participant, isLocal) {
   } else if (isLocal && screenShareTrack) {
     console.log('Local participant has active screen share track but no publication found');
     
-    // Create a direct screen share tile using the local track
+    // Create a direct screen share tile using the local track (fallback method)
     createDirectScreenShareTile(participant, screenShareTrack);
   }
   
@@ -1223,7 +1365,7 @@ function createScreenShareTile(participant, screenPublication) {
   
   // Create info bar
   const infoBar = document.createElement('div');
-  infoBar.className = 'absolute bottom-0 left-0 right-0 bg-gray-900 bg-opacity-70 p-2';
+  infoBar.className = 'absolute bottom-0 left-0 right-0 bg-gray-900 bg-opacity-70 p-2 flex justify-between items-center';
   
   // Screen share label
   const label = document.createElement('div');
@@ -1231,10 +1373,38 @@ function createScreenShareTile(participant, screenPublication) {
   label.textContent = `${participant.identity}'s Screen`;
   infoBar.appendChild(label);
   
+  // Add focus button if not already in focus mode
+  if (!isFocusLayout) {
+    const focusButton = document.createElement('button');
+    focusButton.className = 'text-white text-xs bg-blue-600 hover:bg-blue-700 rounded px-2 py-1';
+    focusButton.textContent = 'Full Screen';
+    focusButton.addEventListener('click', () => {
+      // Set active screen share ID
+      activeScreenShareId = participant.identity;
+      
+      // Enable focus layout
+      isFocusLayout = true;
+      participantsContainer.classList.add('focus-layout');
+      layoutBtn.classList.remove('bg-gray-700');
+      layoutBtn.classList.add('bg-blue-600');
+      
+      // Update the grid
+      updateParticipantGrid();
+      
+      showToast('Focus layout enabled - Screen share is now full screen');
+    });
+    infoBar.appendChild(focusButton);
+  }
+  
   tile.appendChild(infoBar);
   participantsContainer.appendChild(tile);
   
+  // Track this screen share as the active one
+  activeScreenShareId = participant.identity;
+  
   console.log('Screen share tile created and added to grid');
+  
+  return tile;
 }
 
 // Create a direct screen share tile using the local track (fallback method)
@@ -1470,4 +1640,18 @@ function updateExistingParticipantTiles() {
   } catch (error) {
     console.error('[ERROR] Error updating existing participant tiles:', error);
   }
+}
+
+// Check if any participant is sharing their screen
+function hasAnyScreenShare() {
+  if (!room || !room.participants) return false;
+  
+  for (const participant of room.participants.values()) {
+    const screenPublication = participant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);
+    if (screenPublication && screenPublication.track && !screenPublication.isMuted) {
+      return true;
+    }
+  }
+  
+  return false;
 }
