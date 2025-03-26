@@ -1,0 +1,177 @@
+---
+---
+
+<!-- Custom styles -->
+<style>
+  #participants-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-gap: 1rem;
+    padding: 1rem;
+    overflow: auto;
+  }
+  
+  #participants-container > div {
+    aspect-ratio: 16/9;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    min-width: 0;
+    min-height: 0;
+  }
+  
+  /* For screens less than 667px wide */
+  @media (max-width: 667px) {
+    #participants-container {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-gap: 0.5rem;
+      padding: 0.5rem;
+    }
+    
+    #participants-container > div {
+      max-width: 200px;
+      max-height: 112.5px; /* Maintains 16:9 ratio (200px ÷ 16 × 9 = 112.5px) */
+    }
+  }
+  
+  /* For very small screens, reduce padding further */
+  @media (max-width: 400px) {
+    #participants-container {
+      padding: 0.25rem;
+      grid-gap: 0.25rem;
+    }
+  }
+  
+  /* Focus layout styles */
+  #participants-container.focus-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    height: 100%;
+  }
+  
+  #participants-container.focus-layout > div[id^="screen-"] {
+    grid-row: 1;
+    max-width: 100%;
+    max-height: 100vh;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+  
+  /* Hide all participant tiles in focus layout */
+  #participants-container.focus-layout .participant-tiles-container {
+    display: none;
+  }
+  
+  /* Show toggle button to view participants */
+  #participants-container.focus-layout .toggle-participants-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+</style>
+
+<!-- Connection status banner -->
+<div id="status-banner" class="hidden bg-blue-600 text-white text-center py-2">
+  <span id="status-text">Connecting...</span>
+</div>
+
+<!-- Main video container -->
+<div id="participants-container" class="flex-1 p-4">
+  <!-- Participant tiles will be dynamically added here -->
+</div>
+
+<!-- Control bar -->
+<div class="bg-gray-800 p-3 flex justify-center items-center gap-4">
+  <!-- Device selection dropdowns -->
+  <div class="flex gap-2 mr-4">
+    <select id="audio-input" class="bg-gray-700 text-white rounded px-2 py-1 text-sm" aria-label="Select microphone">
+      <option value="">Loading...</option>
+    </select>
+    <select id="video-input" class="bg-gray-700 text-white rounded px-2 py-1 text-sm" aria-label="Select camera">
+      <option value="">Loading...</option>
+    </select>
+  </div>
+
+  <button id="mic-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center" aria-label="Toggle microphone">
+    <svg id="mic-icon" class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+    </svg>
+    <svg id="mic-off-icon" class="w-6 h-6 text-white hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path>
+    </svg>
+  </button>
+  
+  <button id="camera-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center" aria-label="Toggle camera">
+    <svg id="camera-icon" class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+    </svg>
+    <svg id="camera-off-icon" class="w-6 h-6 text-white hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 14"></path>
+    </svg>
+  </button>
+  
+  <button id="screen-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center" aria-label="Share screen">
+    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+    </svg>
+  </button>
+
+  <button id="layout-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center disabled opacity-50" aria-label="Toggle layout" disabled>
+    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+    </svg>
+  </button>
+  
+  <button id="invite-btn" class="w-12 h-12 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center" aria-label="Copy invite link">
+    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+    </svg>
+  </button>
+  
+  <button id="leave-btn" class="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center" aria-label="Leave meeting">
+    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+    </svg>
+  </button>
+</div>
+
+<!-- Connect modal -->
+<div id="connect-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center">
+  <div class="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+    <h2 class="text-white text-xl font-bold mb-4">Join Meeting</h2>
+    <div id="permissions-warning" class="hidden mb-4 p-3 bg-yellow-600 text-white rounded">
+      Please allow camera and microphone access to join the meeting
+    </div>
+    <div class="mb-4">
+      <label class="block text-gray-300 mb-2" for="username">Your Name</label>
+      <input id="username" type="text" class="w-full p-2 rounded bg-gray-700 text-white" placeholder="Enter your name">
+    </div>
+    <div class="mb-4">
+      <label class="block text-gray-300 mb-2" for="room">Room Name</label>
+      <input id="room" type="text" class="w-full p-2 rounded bg-gray-700 text-white" placeholder="Enter room name">
+    </div>
+    <button id="join-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+      Join
+    </button>
+  </div>
+</div>
+
+<!-- Toast notifications -->
+<div id="toast" class="fixed top-14 right-2 hidden">
+  <div class="bg-gray-800 text-white px-4 py-2 rounded-lg border border-gray-600 shadow-lg">
+    <span id="toast-message"></span>
+  </div>
+</div>
+
+<script  src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script  src="./videoConference.js"></script>
